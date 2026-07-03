@@ -91,6 +91,20 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      // ---- Chat message relay ----
+      case 'chat-message': {
+        const room = rooms.get(ws.roomCode);
+        if (!room) return;
+        const peer = room.find(p => p !== ws);
+        if (peer) send(peer, {
+          type: 'chat-message',
+          text: msg.text,
+          from: ws.userNum,
+          time: new Date().toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' }),
+        });
+        break;
+      }
+
       // ---- Capture trigger: one user hits the shutter ----
       case 'trigger-capture': {
         const room = rooms.get(ws.roomCode);
