@@ -109,7 +109,13 @@ wss.on('connection', (ws) => {
       case 'trigger-capture': {
         const room = rooms.get(ws.roomCode);
         if (!room) return;
-        room.forEach(p => send(p, { type: 'do-capture', countdown: msg.countdown ?? 3 }));
+        // forward ke peer saja (bukan broadcast ke semua termasuk pengirim)
+        const peer = room.find(p => p !== ws);
+        if (peer) send(peer, {
+          type: 'do-capture',
+          countdown: msg.countdown ?? 3,
+          startAt: msg.startAt,   // teruskan timestamp untuk sinkronisasi
+        });
         break;
       }
 
