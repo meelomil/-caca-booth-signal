@@ -82,6 +82,15 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      // ---- Sync settings: layout, filter, theme, caption ----
+      case 'sync-settings': {
+        const room = rooms.get(ws.roomCode);
+        if (!room) return;
+        const peer = room.find(p => p !== ws);
+        if (peer) send(peer, { type: 'sync-settings', settings: msg.settings });
+        break;
+      }
+
       // ---- Capture trigger: one user hits the shutter ----
       case 'trigger-capture': {
         const room = rooms.get(ws.roomCode);
