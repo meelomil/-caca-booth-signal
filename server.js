@@ -54,19 +54,35 @@ wss.on('connection', (ws) => {
           send(ws, { type: 'error', message: 'Room tidak ditemukan. Cek kodenya ya!' });
           return;
         }
-        if (room.length >= 2) {
+
+        // cek slot null (user yang disconnect) — izinkan rejoin
+        const emptySlot = room.findIndex(p => p === null || !p || p.readyState !== (p.OPEN ?? 1));
+        const activeCount = room.filter(p => p && p.readyState === (p.OPEN ?? 1)).length;
+
+        if (activeCount >= 2 && emptySlot === -1) {
           send(ws, { type: 'error', message: 'Room sudah penuh (maks 2 orang).' });
           return;
         }
 
-        room.push(ws);
-        ws.roomCode = code;
-        ws.userNum  = 2;
+        if (emptySlot !== -1) {
+          // isi slot yang kosong
+          room[emptySlot] = ws;
+          ws.roomCode = code;
+          ws.userNum  = emptySlot + 1;
+        } else {
+          // slot baru
+          room.push(ws);
+          ws.roomCode = code;
+          ws.userNum  = room.length;
+        }
 
-        // tell both parties they're connected
-        send(room[0], { type: 'peer-joined', you: 1 });
-        send(room[1], { type: 'peer-joined', you: 2 });
-        console.log(`Room ${code}: 2 users connected`);
+        // beritahu semua yang aktif
+        const active = room.filter(p => p && p.readyState === (p.OPEN ?? 1));
+        active.forEach((p, i) => {
+          send(p, { type: 'peer-joined', you: room.indexOf(p) + 1 });
+        });
+
+        console.log(`Room ${code}: user ${ws.userNum} joined/rejoined`);
         break;
       }
 
@@ -105,6 +121,15 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      // ---- Request settings dari peer ----
+      case 'request-settings': {
+        const room = rooms.get(ws.roomCode);
+        if (!room) return;
+        const peer = room.find(p => p && p !== ws);
+        if (peer) send(peer, { type: 'request-settings' });
+        break;
+      }
+
       // ---- Capture trigger: one user hits the shutter ----
       case 'trigger-capture': {
         const room = rooms.get(ws.roomCode);
@@ -135,13 +160,26 @@ wss.on('connection', (ws) => {
     const room = rooms.get(ws.roomCode);
     if (!room) return;
 
-    // notify peer
-    const peer = room.find(p => p !== ws);
-    if (peer) send(peer, { type: 'peer-left' });
+    // tandai slot user ini sebagai null (disconnected) bukan hapus room
+    const idx = room.indexOf(ws);
+    if (idx !== -1) room[idx] = null;
 
-    // clean up room
-    rooms.delete(ws.roomCode);
-    console.log(`Room ${ws.roomCode} closed`);
+    // notify peer bahwa user disconnect sementara
+    const peer = room.find(p => p && p !== ws);
+    if (peer) send(peer, { type: 'peer-left', roomCode: ws.roomCode });
+
+    console.log(`User ${ws.userNum} disconnect dari room ${ws.roomCode}`);
+
+    // hapus room setelah 60 detik kalau tidak ada yang reconnect
+    setTimeout(() => {
+      const r = rooms.get(ws.roomCode);
+      if (!r) return;
+      const stillActive = r.filter(p => p && p.readyState === p.OPEN);
+      if (stillActive.length === 0) {
+        rooms.delete(ws.roomCode);
+        console.log(`Room ${ws.roomCode} dihapus (kosong)`);
+      }
+    }, 60000);
   });
 });
 
