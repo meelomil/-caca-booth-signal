@@ -130,6 +130,18 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      // ---- Call signaling ----
+      case 'call-invite':
+      case 'call-accept':
+      case 'call-reject':
+      case 'call-end': {
+        const room = rooms.get(ws.roomCode);
+        if (!room) return;
+        const peer = room.find(p => p && p !== ws);
+        if (peer) send(peer, { type: msg.type });
+        break;
+      }
+
       // ---- Capture trigger: one user hits the shutter ----
       case 'trigger-capture': {
         const room = rooms.get(ws.roomCode);
